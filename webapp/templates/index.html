@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>포도알 스케줄 크롤러</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .tab-btn.active { background-color: #7c3aed; color: white; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <h1 class="text-3xl font-bold text-center text-purple-700 mb-8">🍇 포도알 스케줄 크롤러</h1>
+
+        <!-- 로그인 정보 -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">🔐 로그인 정보</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">아이디</label>
+                    <input type="text" id="username" value="podor" class="w-full px-3 py-2 border rounded-md focus:ring-purple-500 focus:border-purple-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
+                    <input type="password" id="password" value="tndlrckdcnfgkwk!" class="w-full px-3 py-2 border rounded-md focus:ring-purple-500 focus:border-purple-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- 탭 -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="flex border-b">
+                <button class="tab-btn active flex-1 py-3 px-4 font-medium" onclick="showTab('crawl')">
+                    1️⃣ 캐스팅 크롤링
+                </button>
+                <button class="tab-btn flex-1 py-3 px-4 font-medium" onclick="showTab('import')">
+                    2️⃣ 포도알 Import
+                </button>
+            </div>
+
+            <!-- 크롤링 탭 -->
+            <div id="tab-crawl" class="tab-content active p-6">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">시즌 ID 필터 (선택)</label>
+                    <input type="text" id="filter_ids" placeholder="예: 1717, 1719 또는 1717~1720"
+                           class="w-full px-3 py-2 border rounded-md focus:ring-purple-500 focus:border-purple-500">
+                    <p class="text-xs text-gray-500 mt-1">비워두면 티켓오픈 전체 대상</p>
+                </div>
+
+                <div class="flex gap-3 mb-6">
+                    <button onclick="startCrawl('musical')" class="flex-1 bg-purple-600 text-white py-3 px-4 rounded-md hover:bg-purple-700 font-medium">
+                        🚀 뮤지컬 크롤링
+                    </button>
+                    <button onclick="startCrawl('play')" class="flex-1 bg-indigo-600 text-white py-3 px-4 rounded-md hover:bg-indigo-700 font-medium">
+                        🎭 연극 크롤링
+                    </button>
+                </div>
+
+                <!-- 로그 -->
+                <div class="bg-gray-900 rounded-md p-4 h-64 overflow-y-auto mb-4">
+                    <pre id="crawl-log" class="text-green-400 text-sm font-mono whitespace-pre-wrap"></pre>
+                </div>
+
+                <!-- 다운로드 -->
+                <div id="download-section" class="hidden">
+                    <div class="flex items-center justify-between bg-green-100 p-4 rounded-md">
+                        <span class="text-green-800 font-medium">✅ 크롤링 완료! <span id="count-badge" class="bg-green-600 text-white px-2 py-1 rounded text-sm"></span></span>
+                        <button onclick="downloadFile()" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">
+                            📥 엑셀 다운로드
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Import 탭 -->
+            <div id="tab-import" class="tab-content p-6">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">최근 크롤링 파일</label>
+                    <select id="import-file" class="w-full px-3 py-2 border rounded-md focus:ring-purple-500 focus:border-purple-500">
+                        <option value="">파일을 선택하세요</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">크롤링 완료 후 파일이 자동으로 추가됩니다</p>
+                </div>
+
+                <button onclick="startImport()" class="w-full bg-orange-600 text-white py-3 px-4 rounded-md hover:bg-orange-700 font-medium mb-6">
+                    📤 포도알에 Import
+                </button>
+
+                <!-- Import 로그 -->
+                <div class="bg-gray-900 rounded-md p-4 h-64 overflow-y-auto">
+                    <pre id="import-log" class="text-green-400 text-sm font-mono whitespace-pre-wrap"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- 상태 -->
+        <div id="status-bar" class="mt-4 text-center text-gray-600 text-sm">
+            준비됨
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentTaskId = null;
+        let completedFiles = [];
+
+        // 탭 전환
+        function showTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // 크롤링 시작
+        async function startCrawl(category) {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const filterIds = document.getElementById('filter_ids').value;
+
+            document.getElementById('crawl-log').textContent = '';
+            document.getElementById('download-section').classList.add('hidden');
+            document.getElementById('status-bar').textContent = '크롤링 중...';
+
+            const response = await fetch('/api/crawl', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, category, filter_ids: filterIds })
+            });
+
+            const data = await response.json();
+            currentTaskId = data.task_id;
+        }
+
+        // Import 시작
+        async function startImport() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const filePath = document.getElementById('import-file').value;
+
+            if (!filePath) {
+                alert('파일을 선택하세요');
+                return;
+            }
+
+            document.getElementById('import-log').textContent = '';
+            document.getElementById('status-bar').textContent = 'Import 중...';
+
+            const response = await fetch('/api/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, file_path: filePath })
+            });
+
+            const data = await response.json();
+            currentTaskId = data.task_id;
+        }
+
+        // 파일 다운로드
+        function downloadFile() {
+            if (currentTaskId) {
+                window.location.href = '/api/download/' + currentTaskId;
+            }
+        }
+
+        // 소켓 이벤트
+        socket.on('log', (data) => {
+            const logEl = document.getElementById('crawl-log');
+            logEl.textContent += data.message + '\n';
+            logEl.scrollTop = logEl.scrollHeight;
+        });
+
+        socket.on('task_complete', async (data) => {
+            document.getElementById('status-bar').textContent = '완료!';
+
+            if (data.status === 'completed') {
+                const taskResponse = await fetch('/api/task/' + data.task_id);
+                const task = await taskResponse.json();
+
+                if (task.file) {
+                    document.getElementById('download-section').classList.remove('hidden');
+                    document.getElementById('count-badge').textContent = task.count + '개 스케줄';
+
+                    // Import 파일 목록에 추가
+                    completedFiles.push(task.file);
+                    updateFileList();
+                }
+            }
+        });
+
+        function updateFileList() {
+            const select = document.getElementById('import-file');
+            select.innerHTML = '<option value="">파일을 선택하세요</option>';
+            completedFiles.forEach(file => {
+                const option = document.createElement('option');
+                option.value = file;
+                option.textContent = file.split('/').pop();
+                select.appendChild(option);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build
+build/
+dist/
+*.spec
+*.exe
+
+# Data
+*.xlsx
+*.xls
+downloads/
+
+# Logs
+*.log
+
+# Credentials (보안)
+.env
+credentials.json
