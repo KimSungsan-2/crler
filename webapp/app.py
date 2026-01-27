@@ -95,8 +95,16 @@ def setup_driver():
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
-    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-software-rasterizer')
+
+    # Railway/Docker 환경에서는 시스템 chromedriver 사용
+    if os.path.exists('/usr/local/bin/chromedriver'):
+        return webdriver.Chrome(service=Service('/usr/local/bin/chromedriver'), options=options)
+    else:
+        return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
 # ==========================================
 # 크롤링 로직
