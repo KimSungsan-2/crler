@@ -1,0 +1,54 @@
+name: 포도알 뮤지컬 자동화
+
+on:
+  schedule:
+    # 월,수,토 KST 04:00 = UTC 전날 19:00
+    # 월(1),수(3),토(6) KST → 일(0),화(2),금(5) UTC
+    - cron: '0 19 * * 0,2,5'
+  workflow_dispatch:
+    inputs:
+      category:
+        description: '카테고리'
+        required: true
+        default: 'musical'
+        type: choice
+        options:
+          - musical
+
+jobs:
+  automate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Install dependencies
+        run: pip install selenium pandas openpyxl webdriver-manager
+
+      - name: Run automation
+        env:
+          PODOAL_ID: ${{ secrets.PODOAL_ID }}
+          PODOAL_PW: ${{ secrets.PODOAL_PW }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+        run: python automate.py musical
+
+      - name: Upload error screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-screenshot
+          path: error_screenshot.png
+          retention-days: 7
