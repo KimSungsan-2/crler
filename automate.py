@@ -248,12 +248,22 @@ def run_import(driver, category, file_path):
     file_input.send_keys(os.path.abspath(file_path))
     print(f"   -> 파일 선택: {os.path.basename(file_path)}")
 
-    # Format 드롭다운에서 xlsx 선택
-    format_select = Select(driver.find_element(By.NAME, "format"))
+    # Format 드롭다운에서 xlsx 선택 (name이 "format" 또는 "input_format"일 수 있음)
+    format_el = None
+    for name_attr in ("format", "input_format"):
+        try:
+            format_el = wait.until(
+                EC.presence_of_element_located((By.NAME, name_attr))
+            )
+            break
+        except Exception:
+            continue
+    if format_el is None:
+        raise Exception("Format 드롭다운을 찾을 수 없습니다 (name='format' / 'input_format' 모두 실패)")
+    format_select = Select(format_el)
     try:
         format_select.select_by_visible_text("xlsx")
     except Exception:
-        # visible text가 다를 수 있으므로 value로 시도
         for option in format_select.options:
             if "xlsx" in option.text.lower():
                 option.click()
