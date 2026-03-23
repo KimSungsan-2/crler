@@ -83,6 +83,7 @@ def run_scrape(driver, category):
     conf = CONFIG[category]
     wait = WebDriverWait(driver, 15)
     category_data = []
+    scraped_titles = []  # 실제로 스케줄을 가져온 공연 제목 목록
 
     print(f"\n🚀 {category.upper()} 크롤링 시작...")
 
@@ -217,6 +218,7 @@ def run_scrape(driver, category):
                     new_count += 1
 
             if new_count > 0:
+                scraped_titles.append(perf_name)
                 print(f"   ✅ {new_count}개 신규 스케줄")
 
         except Exception as e:
@@ -227,8 +229,8 @@ def run_scrape(driver, category):
         fname = f"podoal_{conf['prefix']}_{datetime.now().strftime('%m%d_%H%M')}.xlsx"
         pd.DataFrame(category_data).to_excel(fname, index=False)
         print(f"\n✅ {len(category_data)}개 스케줄 저장: {fname}")
-        return fname
-    return None
+        return fname, scraped_titles
+    return None, scraped_titles
 
 
 # ==========================================
@@ -288,7 +290,7 @@ def run_import(driver, category, file_path):
 # ==========================================
 # 티켓오픈 처리
 # ==========================================
-def handle_ticket_open(driver, category):
+def handle_ticket_open(driver, category, scraped_titles=None):
     conf = CONFIG[category]
     wait = WebDriverWait(driver, 15)
     today = date.today()
@@ -301,10 +303,11 @@ def handle_ticket_open(driver, category):
     rows = driver.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")
     if not rows:
         print("   -> 티켓오픈 항목 없음")
-        return {"deleted": 0, "updated": 0}
+        return {"deleted": 0, "updated": 0, "skipped": 0}
 
     items_to_delete = []
     items_to_update = []
+    items_skipped = []
 
     for row in rows:
         cells = row.find_elements(By.CSS_SELECTOR, "td, th")
@@ -314,6 +317,7 @@ def handle_ticket_open(driver, category):
 
         open_date_str = cells[3].text.strip()
         schedule_status = cells[5].text.strip()
+        perf_name = cells[1].text.strip()
 
         try:
             open_date = datetime.strptime(open_date_str, "%Y-%m-%d").date()
@@ -325,11 +329,15 @@ def handle_ticket_open(driver, category):
 
         if open_date < today:
             # 오늘 이전 (엄격히 과거만) → 삭제 대상
-            items_to_delete.append((checkbox_value, cells[1].text.strip(), open_date_str))
+            items_to_delete.append((checkbox_value, perf_name, open_date_str))
         elif schedule_status != "반영 완료":
-            # 오늘 이후 + 아직 반영 안 됨 → 반영완료 표시
-            link = cells[1].find_element(By.TAG_NAME, "a")
-            items_to_update.append((link.get_attribute("href"), cells[1].text.strip()))
+            # 실제로 스케줄이 가져와진 공연만 반영완료 처리
+            if scraped_titles is not None and perf_name not in scraped_titles:
+                items_skipped.append(perf_name)
+                print(f"   ⏭️ '{perf_name}' 스케줄 미반영 (크롤링 데이터 없음) - 반영완료 처리 보류")
+            else:
+                link = cells[1].find_element(By.TAG_NAME, "a")
+                items_to_update.append((link.get_attribute("href"), perf_name))
 
     updated_count = 0
     deleted_count = 0
@@ -379,8 +387,8 @@ def handle_ticket_open(driver, category):
         deleted_count = len(items_to_delete)
         print(f"   -> {deleted_count}개 삭제 완료")
 
-    print(f"   -> 처리 완료: 삭제 {deleted_count}건, 반영완료 {updated_count}건")
-    return {"deleted": deleted_count, "updated": updated_count}
+    print(f"   -> 처리 완료: 삭제 {deleted_count}건, 반영완료 {updated_count}건, 보류 {len(items_skipped)}건")
+    return {"deleted": deleted_count, "updated": updated_count, "skipped": len(items_skipped)}
 
 
 # ==========================================
@@ -400,7 +408,8 @@ def send_result_email(category, file_path, scrape_count, ticket_result, error=No
             f"포도알 {category.upper()} 자동화 결과\n\n"
             f"■ 크롤링: {scrape_count}개 신규 스케줄\n"
             f"■ 티켓오픈: 삭제 {ticket_result['deleted']}건, "
-            f"반영완료 {ticket_result['updated']}건\n"
+            f"반영완료 {ticket_result['updated']}건, "
+            f"보류 {ticket_result.get('skipped', 0)}건\n"
             f"■ Import: {'완료' if scrape_count > 0 else '스킵 (신규 없음)'}\n"
         )
 
@@ -456,7 +465,7 @@ def main():
         print("   -> 로그인 완료")
 
         # 2. 크롤링
-        file_path = run_scrape(driver, category)
+        file_path, scraped_titles = run_scrape(driver, category)
         if file_path:
             scrape_count = len(pd.read_excel(file_path))
 
@@ -465,8 +474,8 @@ def main():
         else:
             print("\n📭 신규 스케줄 없음 - Import 스킵")
 
-        # 4. 티켓오픈 처리
-        ticket_result = handle_ticket_open(driver, category)
+        # 4. 티켓오픈 처리 (실제 크롤링된 공연 목록 전달)
+        ticket_result = handle_ticket_open(driver, category, scraped_titles)
 
         # 5. 이메일 발송
         send_result_email(category, file_path, scrape_count, ticket_result)
