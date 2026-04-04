@@ -101,7 +101,7 @@ def run_scrape(driver, category):
         print(f"   -> 시작 ID: {current_id} (최근 ID: {first_id})")
     except Exception:
         print("   ⚠️ ID 추출 실패.")
-        return None
+        return None, []
 
     # [B] 티켓오픈 대상 수집
     driver.get(f"{conf['base_url']}{conf['open_path']}")
