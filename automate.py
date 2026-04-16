@@ -105,9 +105,11 @@ def run_scrape(driver, category):
 
     # [B] 티켓오픈 대상 수집
     driver.get(f"{conf['base_url']}{conf['open_path']}")
-    rows = wait.until(EC.presence_of_all_elements_located(
-        (By.CSS_SELECTOR, "#result_list tbody tr")
-    ))
+    time.sleep(2)
+    rows = driver.find_elements(By.CSS_SELECTOR, "#result_list tbody tr")
+    if not rows:
+        print("   📭 티켓오픈 대기 공연 없음")
+        return None, []
     targets = []
     for row in rows:
         cells = row.find_elements(By.CSS_SELECTOR, "td, th")
