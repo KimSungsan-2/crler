@@ -369,7 +369,9 @@ def handle_ticket_open(driver, category, scraped_titles=None):
             checkbox = driver.find_element(
                 By.CSS_SELECTOR, f"input.action-select[value='{value}']"
             )
-            checkbox.click()
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", checkbox)
+            time.sleep(0.2)
+            driver.execute_script("arguments[0].click();", checkbox)
 
         # Delete 액션 선택
         action_select = Select(driver.find_element(By.NAME, "action"))
